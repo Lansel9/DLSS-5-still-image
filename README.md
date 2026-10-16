@@ -5,7 +5,7 @@
 
 ## Скачать и запустить
 
-**[Скачать готовую сборку Windows x64](https://github.com/Lansel9/DLSS-5-still-image/releases/latest)**
+**[Скачать готовую сборку Windows x64](https://github.com/Lansel9/DLSS-5-still-image/releases/tag/v0.0.0)**
 
 1. В разделе Releases скачайте `DLSSNR-Portable-0.0.0-Windows-x64.zip` — около **353 МБ**.
 2. Полностью распакуйте папку `DLSSNR-Portable` в удобное место с правом записи.

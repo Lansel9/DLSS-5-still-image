@@ -1,0 +1,55 @@
+name: Build and publish Windows portable
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - release-request.json
+
+permissions:
+  contents: write
+
+concurrency:
+  group: portable-release
+  cancel-in-progress: false
+
+jobs:
+  portable:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Fetch pinned components and Python
+        shell: pwsh
+        run: |
+          python Build/prepare_release_components.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python Build/prepare_python.py
+      - name: Build folder and validate isolated runtime
+        shell: pwsh
+        run: |
+          python Build/build_portable.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $build = Get-Content Build/latest.json -Raw | ConvertFrom-Json
+          $python = Join-Path $build.folder 'Python/python.exe'
+          & $python -I -B -X utf8 -c "import sys,importlib.util,tkinter,numpy,PIL; assert sys.flags.isolated; assert importlib.util.find_spec('torch') is None; print(sys.version)"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force Test/results | Out-Null
+          & $python -I -B -X utf8 -m unittest discover -s Test -p test_native_backend.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python Build/build_portable.py --package $build.folder
+      - name: Publish release with Russian notes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $request = Get-Content release-request.json -Raw | ConvertFrom-Json
+          $latest = Get-Content Build/latest.json -Raw | ConvertFrom-Json
+          $infoPath = Join-Path (Split-Path $latest.folder -Parent) 'build.json'
+          $info = Get-Content $infoPath -Raw | ConvertFrom-Json
+          $sums = Join-Path (Split-Path $latest.folder -Parent) 'SHA256SUMS.txt'
+          ($info.sha256 + '  ' + (Split-Path $info.zip -Leaf)) | Set-Content -LiteralPath $sums -Encoding ascii
+          gh release create $request.tag $info.zip $sums --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title $request.title --notes-file release-notes.ru.md --prerelease
